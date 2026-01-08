@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Saint Denis Public Exchange</title>
+    <link href="https://fonts.googleapis.com/css2?family=Fredericka+the+Great&family=Finger+Paint&family=Special+Elite&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root { --chalk-white: #f0f0f0; --chalk-gold: #d4af37; --wood: #3d2b1f; --slate: #2b2f2b; --chalk-red: #ff8888; --chalk-green: #88ff88; }
+        body { background: #1a1a1a; color: var(--chalk-white); font-family: 'Special Elite', serif; padding: 20px; overflow-x: hidden; }
+        .chalkboard { background-color: var(--slate); border: 15px solid var(--wood); border-radius: 10px; box-shadow: inset 0 0 100px #000; padding: 30px; max-width: 1000px; margin: auto; min-height: 800px; }
+        h1 { font-family: 'Fredericka the Great', cursive; font-size: 3em; text-align: center; color: var(--chalk-gold); margin-bottom: 5px; }
+        .subtitle { text-align: center; font-family: 'Finger Paint'; color: #888; margin-bottom: 30px; }
+        .market-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .biz-card { border: 1px dashed rgba(255,255,255,0.2); padding: 20px; border-radius: 5px; background: rgba(0,0,0,0.2); }
+        .biz-name { font-family: 'Finger Paint'; font-size: 1.6em; color: var(--chalk-gold); }
+        .biz-price { font-family: 'Finger Paint'; font-size: 2em; float: right; }
+        .status { text-align: center; font-size: 0.8em; color: #555; margin-top: 20px; }
+        .history-dots { display: flex; gap: 5px; align-items: flex-end; height: 30px; margin-top: 10px; }
+        .dot { width: 10px; background: var(--chalk-gold); opacity: 0.5; }
+    </style>
+</head>
+<body>
+
+<div class="chalkboard">
+    <h1 id="mName">Loading Market...</h1>
+    <p class="subtitle" id="mSub">Connecting to the ticker...</p>
+
+    <div id="display" class="market-grid"></div>
+    
+    <div class="status">● LIVE CONNECTION ACTIVE - UPDATES AUTOMATICALLY</div>
+</div>
+
+<script>
+    // --- INSERT YOUR SUPABASE KEYS HERE ---
+    const SB_URL = "YOUR_SUPABASE_URL"; 
+    const SB_KEY = "YOUR_SUPABASE_ANON_KEY";
+    const supabase = lib.supabase.createClient(SB_URL, SB_KEY);
+
+    async function loadData() {
+        const { data } = await supabase.from('market_data').select('json_payload').eq('id', 1).single();
+        if (data) render(data.json_payload);
+    }
+
+    function render(payload) {
+        document.getElementById('mName').innerText = payload.config.mName;
+        document.getElementById('mSub').innerText = payload.config.mSub;
+        const container = document.getElementById('display');
+        container.innerHTML = '';
+
+        payload.stocks.forEach(s => {
+            let chg = ((s.price - s.last)/s.last)*100;
+            let dots = s.history.map(p => `<div class="dot" style="height:${Math.min(30, (p/s.price)*15)}px"></div>`).join('');
+            
+            container.innerHTML += `
+                <div class="biz-card">
+                    <span class="biz-name">${s.name}</span>
+                    <span class="biz-price">$${s.price.toFixed(2)}</span>
+                    <div style="clear:both; color:${chg>=0?'var(--chalk-green)':'var(--chalk-red)'}">
+                        ${chg>=0?'▲':'▼'} ${Math.abs(chg).toFixed(1)}%
+                    </div>
+                    <div class="history-dots">${dots}</div>
+                </div>`;
+        });
+    }
+
+    // Real-time listener: This is the magic.
+    supabase.channel('custom-all-channel')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'market_data' }, (payload) => {
+        render(payload.new.json_payload);
+    })
+    .subscribe();
+
+    loadData();
+</script>
+</body>
+</html>
